@@ -9,6 +9,36 @@ import (
 	"github.com/pkg/errors"
 )
 
+// TemporaryType represents whether an error is Temporary or not
+type TemporaryType int
+
+const (
+	// Unknown means the error does not have a Temporary function
+	Unknown TemporaryType = 0
+
+	// Temporary means the error has a Temporary function and it returned true
+	Temporary TemporaryType = 1
+
+	// Permanent means the error has a Temporary function and it returned false
+	Permanent TemporaryType = 2
+)
+
+// IsTemporary returns the result of err.Temporary if it exists, otherwise false
+// .. does not inspect the cause
+func IsTemporary(err error) TemporaryType {
+	switch err := err.(type) {
+	case interface {
+		Temporary() bool
+	}:
+		if err.Temporary() {
+			return Temporary
+		}
+		return Permanent
+	default:
+		return Unknown
+	}
+}
+
 // MakePermanent forces an error to be permanent
 func MakePermanent(cause error) error {
 	return &madePermanent{cause: cause}
@@ -43,14 +73,11 @@ func (pe *permErrorWrapper) Error() string { return pe.msg + ": " + pe.cause.Err
 func (pe *permErrorWrapper) Cause() error  { return pe.cause }
 
 func (pe *permErrorWrapper) Temporary() bool {
-	err := errors.Cause(pe.cause)
-	switch err := err.(type) {
-	case interface {
-		Temporary() bool
-	}:
-		return err.Temporary()
+	switch IsTemporary(errors.Cause(pe.cause)) {
+	case Temporary:
+		return true
 	default:
-		// default to permanent if not specified by the cause
+		// default to permanent if not explcitly specified
 		return false
 	}
 }
@@ -78,14 +105,11 @@ func (we *wrapError) Error() string { return we.cause.Error() }
 func (we *wrapError) Cause() error  { return we.cause }
 
 func (we *wrapError) Temporary() bool {
-	err := errors.Cause(we.cause)
-	switch err := err.(type) {
-	case interface {
-		Temporary() bool
-	}:
-		return err.Temporary()
+	switch IsTemporary(errors.Cause(we.cause)) {
+	case Temporary:
+		return true
 	default:
-		// default to permanent if not specified by the cause
+		// default to permanent if not explcitly specified
 		return false
 	}
 }
